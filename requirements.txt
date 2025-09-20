@@ -1,5 +1,5 @@
 streamlit
-qiskit
-qiskit-aer
 numpy
 pandas
+qiskit
+
