@@ -1,21 +1,13 @@
 # Paste your full app code here
 # streamlit_app.py
+# streamlit_app.py
 import streamlit as st
 import numpy as np
 import pandas as pd
+from qiskit import QuantumCircuit, execute
 
-# Qiskit imports compatible with Python 3.13
-from qiskit import QuantumCircuit
-#from qiskit.providers.aer import AerSimulator
-from qiskit.providers.basicaer import QasmSimulator
-simulator = QasmSimulator()
-from qiskit.execute_function import execute  # Correct import for latest Qiskit
-
-# Streamlit page config
-st.set_page_config(
-    page_title="QKD Virtual Lab - BB84 Protocol",
-    layout="wide"
-)
+# Streamlit page configuration
+st.set_page_config(page_title="QKD Virtual Lab - BB84 Protocol", layout="wide")
 
 # --- Sidebar ---
 st.sidebar.title("BB84 Virtual Lab")
@@ -47,29 +39,26 @@ if tab == "Simulation":
         alice_bits = np.random.randint(2, size=n_bits)
         alice_bases = np.random.randint(2, size=n_bits)
         bob_bases = np.random.randint(2, size=n_bits)
-        
-        # Step 2: Qiskit simulation using AerSimulator
+
         key_bits = []
         table_data = []
-
-        simulator = AerSimulator()
 
         for i in range(n_bits):
             qc = QuantumCircuit(1, 1)
             
-            # Encode Alice's bit
+            # Alice encodes her bit
             if alice_bits[i] == 1:
                 qc.x(0)
             if alice_bases[i] == 1:
                 qc.h(0)
-            
+
             # Eve intervention
             if eavesdrop:
                 eve_basis = np.random.randint(2)
                 if eve_basis == 1:
                     qc.h(0)
                 qc.measure(0, 0)
-                result = execute(qc, simulator, shots=1).result()
+                result = execute(qc, shots=1).result()
                 meas = int(list(result.get_counts().keys())[0])
                 qc.reset(0)
                 if meas == 1:
@@ -77,26 +66,28 @@ if tab == "Simulation":
                 if eve_basis == 1:
                     qc.h(0)
                 qc.barrier()
-            
+
             # Bob measurement
             if bob_bases[i] == 1:
                 qc.h(0)
             qc.measure(0, 0)
 
-            result = execute(qc, simulator, shots=1).result()
+            result = execute(qc, shots=1).result()
             meas_bit = int(list(result.get_counts().keys())[0])
-            
-            # Only keep bits where bases match
+
+            # Keep bits where bases match
             if alice_bases[i] == bob_bases[i]:
                 key_bits.append(meas_bit)
-            
+
             table_data.append([i+1, alice_bits[i], alice_bases[i], bob_bases[i], meas_bit])
 
-        # Display table
+        # Display step-by-step table
         df = pd.DataFrame(table_data, columns=["Qubit#", "Alice Bit", "Alice Basis", "Bob Basis", "Bob Measured"])
         st.subheader("Step-by-step Measurement Table")
         st.dataframe(df)
 
-        # Show final key
+        # Display final shared key
         st.subheader("Final Shared Key")
         st.code("".join(map(str, key_bits)))
+
+               
