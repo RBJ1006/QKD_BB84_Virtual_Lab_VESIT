@@ -1,24 +1,15 @@
 # Paste your full app code here
-import streamlit as st
-import numpy as np
-import pandas as pd
-from qiskit import QuantumCircuit, execute
-from qiskit.providers.aer import AerSimulator
-
-st.set_page_config(page_title="QKD Virtual Lab - BB84 Protocol", layout="wide")
-
-# (Rest of your BB84 app code goes here)
-
 # streamlit_app.py
 import streamlit as st
 import numpy as np
 import pandas as pd
 
-# Qiskit imports using AerSimulator for Python 3.13 compatibility
-from qiskit import QuantumCircuit, execute
+# Qiskit imports compatible with Python 3.13
+from qiskit import QuantumCircuit
 from qiskit.providers.aer import AerSimulator
+from qiskit.execute_function import execute  # Correct import for latest Qiskit
 
-# Set page configuration
+# Streamlit page config
 st.set_page_config(
     page_title="QKD Virtual Lab - BB84 Protocol",
     layout="wide"
@@ -41,7 +32,7 @@ if tab == "Introduction":
     - They compare bases over a public channel to create a shared key.  
     - Presence of eavesdropper (Eve) can be detected due to quantum disturbance.
     """)
-    
+
 # --- Simulation Tab ---
 if tab == "Simulation":
     st.title("BB84 Simulation")
@@ -64,7 +55,7 @@ if tab == "Simulation":
         for i in range(n_bits):
             qc = QuantumCircuit(1, 1)
             
-            # Encode bit
+            # Encode Alice's bit
             if alice_bits[i] == 1:
                 qc.x(0)
             if alice_bases[i] == 1:
@@ -75,7 +66,6 @@ if tab == "Simulation":
                 eve_basis = np.random.randint(2)
                 if eve_basis == 1:
                     qc.h(0)
-                # Measure and reset
                 qc.measure(0, 0)
                 result = execute(qc, simulator, shots=1).result()
                 meas = int(list(result.get_counts().keys())[0])
