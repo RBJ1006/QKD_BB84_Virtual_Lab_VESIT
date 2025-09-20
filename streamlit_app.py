@@ -1,117 +1,110 @@
+# Paste your full app code here
 import streamlit as st
 import numpy as np
 import pandas as pd
-from qiskit import QuantumCircuit, Aer, execute
+from qiskit import QuantumCircuit, execute
+from qiskit.providers.aer import AerSimulator
 
 st.set_page_config(page_title="QKD Virtual Lab - BB84 Protocol", layout="wide")
 
-# Title
-st.title("🔑 Quantum Key Distribution Virtual Lab - BB84 Protocol")
+# (Rest of your BB84 app code goes here)
 
-# Sidebar navigation
-page = st.sidebar.radio("Navigation", ["Introduction", "Simulation"])
+# streamlit_app.py
+import streamlit as st
+import numpy as np
+import pandas as pd
 
-# -----------------------------
-# 1. INTRODUCTION PAGE
-# -----------------------------
-if page == "Introduction":
-    st.header("Why Quantum Key Distribution (QKD)?")
-    st.markdown(
-        """
-        - Classical cryptography relies on mathematical complexity (e.g., RSA, ECC).  
-        - Quantum computers threaten these systems.  
-        - QKD provides **information-theoretic security** based on quantum mechanics.  
+# Qiskit imports using AerSimulator for Python 3.13 compatibility
+from qiskit import QuantumCircuit, execute
+from qiskit.providers.aer import AerSimulator
 
-        ### Classification of QKD Protocols:
-        - **Prepare-and-measure protocols**: e.g., BB84, B92.  
-        - **Entanglement-based protocols**: e.g., E91.  
-        - **Measurement-device-independent QKD (MDI-QKD)**.  
+# Set page configuration
+st.set_page_config(
+    page_title="QKD Virtual Lab - BB84 Protocol",
+    layout="wide"
+)
 
-        ### The BB84 Protocol (1984)
-        - Alice encodes random bits using random bases (rectilinear or diagonal).  
-        - Bob measures in random bases.  
-        - After basis reconciliation, they keep only bits where bases match.  
-        - An eavesdropper (Eve) introduces detectable errors.  
-        """)
-    st.info("👉 Switch to the **Simulation** tab to try the BB84 protocol.")
+# --- Sidebar ---
+st.sidebar.title("BB84 Virtual Lab")
+tab = st.sidebar.radio("Go to", ["Introduction", "Simulation"])
 
-# -----------------------------
-# 2. SIMULATION PAGE
-# -----------------------------
-elif page == "Simulation":
-    st.header("BB84 Protocol Simulation")
+# --- Introduction Tab ---
+if tab == "Introduction":
+    st.title("Quantum Key Distribution: BB84 Protocol")
+    st.markdown("""
+    **Why QKD?**  
+    Quantum Key Distribution allows two parties to share a secure key using quantum mechanics.  
 
-    st.sidebar.subheader("Simulation Controls")
-    num_qubits = st.sidebar.slider("Number of qubits", 4, 32, 8, step=2)
-    add_eve = st.sidebar.checkbox("Include Eve (eavesdropper)?", value=False)
+    **BB84 Protocol Overview:**  
+    - Sender (Alice) encodes bits using random bases (Z or X).  
+    - Receiver (Bob) measures in random bases.  
+    - They compare bases over a public channel to create a shared key.  
+    - Presence of eavesdropper (Eve) can be detected due to quantum disturbance.
+    """)
+    
+# --- Simulation Tab ---
+if tab == "Simulation":
+    st.title("BB84 Simulation")
 
-    st.markdown("### Step 1: Alice generates random bits and bases")
-    alice_bits = np.random.randint(2, size=num_qubits)
-    alice_bases = np.random.randint(2, size=num_qubits)
-    st.write("Alice's bits:", alice_bits)
-    st.write("Alice's bases (0=Z, 1=X):", alice_bases)
+    n_bits = st.slider("Number of qubits (photons)", min_value=4, max_value=20, value=8, step=1)
+    eavesdrop = st.checkbox("Include eavesdropper (Eve)?", value=False)
 
-    st.markdown("### Step 2: Bob chooses random bases")
-    bob_bases = np.random.randint(2, size=num_qubits)
-    st.write("Bob's bases (0=Z, 1=X):", bob_bases)
+    if st.button("Run Simulation"):
+        # Step 1: Random bits and bases
+        alice_bits = np.random.randint(2, size=n_bits)
+        alice_bases = np.random.randint(2, size=n_bits)
+        bob_bases = np.random.randint(2, size=n_bits)
+        
+        # Step 2: Qiskit simulation using AerSimulator
+        key_bits = []
+        table_data = []
 
-    # Quantum simulation
-    backend = Aer.get_backend("qasm_simulator")
-    bob_results = []
+        simulator = AerSimulator()
 
-    for i in range(num_qubits):
-        qc = QuantumCircuit(1, 1)
-        # Alice encodes qubit
-        if alice_bits[i] == 1:
-            qc.x(0)
-        if alice_bases[i] == 1:
-            qc.h(0)
-
-        # Eve (optional)
-        if add_eve:
-            eve_basis = np.random.randint(2)
-            if eve_basis == 1:
+        for i in range(n_bits):
+            qc = QuantumCircuit(1, 1)
+            
+            # Encode bit
+            if alice_bits[i] == 1:
+                qc.x(0)
+            if alice_bases[i] == 1:
+                qc.h(0)
+            
+            # Eve intervention
+            if eavesdrop:
+                eve_basis = np.random.randint(2)
+                if eve_basis == 1:
+                    qc.h(0)
+                # Measure and reset
+                qc.measure(0, 0)
+                result = execute(qc, simulator, shots=1).result()
+                meas = int(list(result.get_counts().keys())[0])
+                qc.reset(0)
+                if meas == 1:
+                    qc.x(0)
+                if eve_basis == 1:
+                    qc.h(0)
+                qc.barrier()
+            
+            # Bob measurement
+            if bob_bases[i] == 1:
                 qc.h(0)
             qc.measure(0, 0)
-            job = execute(qc, backend, shots=1)
-            eve_result = int(list(job.result().get_counts().keys())[0])
-            qc = QuantumCircuit(1, 1)
-            if eve_result == 1:
-                qc.x(0)
-            if eve_basis == 1:
-                qc.h(0)
 
-        # Bob's measurement
-        if bob_bases[i] == 1:
-            qc.h(0)
-        qc.measure(0, 0)
-        job = execute(qc, backend, shots=1)
-        result = int(list(job.result().get_counts().keys())[0])
-        bob_results.append(result)
+            result = execute(qc, simulator, shots=1).result()
+            meas_bit = int(list(result.get_counts().keys())[0])
+            
+            # Only keep bits where bases match
+            if alice_bases[i] == bob_bases[i]:
+                key_bits.append(meas_bit)
+            
+            table_data.append([i+1, alice_bits[i], alice_bases[i], bob_bases[i], meas_bit])
 
-    st.markdown("### Step 3: Measurement results")
-    st.write("Bob's results:", bob_results)
+        # Display table
+        df = pd.DataFrame(table_data, columns=["Qubit#", "Alice Bit", "Alice Basis", "Bob Basis", "Bob Measured"])
+        st.subheader("Step-by-step Measurement Table")
+        st.dataframe(df)
 
-    # Step 4: Basis reconciliation
-    mask = alice_bases == bob_bases
-    sifted_alice = alice_bits[mask]
-    sifted_bob = np.array(bob_results)[mask]
-
-    st.markdown("### Step 4: Basis reconciliation (keeping only matching bases)")
-    df = pd.DataFrame({
-        "Alice bit": alice_bits,
-        "Alice basis": alice_bases,
-        "Bob basis": bob_bases,
-        "Bob result": bob_results,
-        "Keep?": mask
-    })
-    st.dataframe(df)
-
-    st.markdown("### Step 5: Final Key")
-    st.success(f"Alice's sifted key: {sifted_alice}")
-    st.success(f"Bob's sifted key:   {sifted_bob}")
-
-    # Error rate
-    if len(sifted_alice) > 0:
-        qber = np.sum(sifted_alice != sifted_bob) / len(sifted_alice)
-        st.warning(f"Quantum Bit Error Rate (QBER): {qber:.2%}")
+        # Show final key
+        st.subheader("Final Shared Key")
+        st.code("".join(map(str, key_bits)))
