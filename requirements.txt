@@ -1,4 +1,4 @@
 streamlit
 numpy
 pandas
-qiskit
+qiskit==0.48.0
