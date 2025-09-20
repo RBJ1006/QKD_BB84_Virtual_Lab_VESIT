@@ -1,10 +1,12 @@
 # Paste your full app code here
 # streamlit_app.py
-# streamlit_app.py
 import streamlit as st
 import numpy as np
 import pandas as pd
-from qiskit import QuantumCircuit, execute
+
+# Correct Qiskit imports for Python 3.13 + Streamlit Cloud
+from qiskit import QuantumCircuit
+from qiskit.execute_function import execute  # Correct import
 
 # Streamlit page configuration
 st.set_page_config(page_title="QKD Virtual Lab - BB84 Protocol", layout="wide")
@@ -89,5 +91,3 @@ if tab == "Simulation":
         # Display final shared key
         st.subheader("Final Shared Key")
         st.code("".join(map(str, key_bits)))
-
-               
