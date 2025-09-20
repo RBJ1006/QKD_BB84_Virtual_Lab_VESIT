@@ -6,7 +6,9 @@ import pandas as pd
 
 # Qiskit imports compatible with Python 3.13
 from qiskit import QuantumCircuit
-from qiskit.providers.aer import AerSimulator
+#from qiskit.providers.aer import AerSimulator
+from qiskit.providers.basicaer import QasmSimulator
+simulator = QasmSimulator()
 from qiskit.execute_function import execute  # Correct import for latest Qiskit
 
 # Streamlit page config
