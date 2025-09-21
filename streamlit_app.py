@@ -5,7 +5,8 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from qiskit import QuantumCircuit, transpile
+from qiskit import QuantumCircuit, transpile, assemble, execute
+#from qiskit import QuantumCircuit, transpile
 from qiskit_aer import AerSimulator
 
 st.set_page_config(
