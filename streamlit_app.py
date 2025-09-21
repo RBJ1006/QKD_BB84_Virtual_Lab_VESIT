@@ -2,11 +2,12 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
+
 from qiskit import QuantumCircuit
-#from qiskit.providers.aer import AerSimulator  # AerSimulator is now in providers.aer
+from qiskit.providers.aer import AerSimulator  # AerSimulator is now in providers.aer
 from qiskit.utils import QuantumInstance
-#from qiskit.execute_function import execute  # execute is now imported from execute_function
-from qiskit_aer import Aer
+from qiskit.execute_function import execute  # execute is now imported from execute_function
+
 
 # Set up Streamlit page
 st.set_page_config(page_title="QKD Virtual Lab - BB84 Protocol", layout="wide")
