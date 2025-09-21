@@ -3,8 +3,8 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from qiskit import QuantumCircuit, execute, transpile
-from qiskit.providers.aer import AerSimulator
+from qiskit import QuantumCircuit, transpile, assemble
+from qiskit_aer import AerSimulator
 from qiskit.visualization import plot_histogram
 
 st.set_page_config(page_title="QXplore: Quantum Key Distribution (BB84 Protocol) Virtual Lab",
