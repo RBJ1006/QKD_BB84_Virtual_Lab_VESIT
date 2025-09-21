@@ -1,286 +1,179 @@
-# streamlit_app.py
+# Paste the full streamlit_app.py code here
 import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from qiskit import QuantumCircuit, Aer, execute
+from qiskit import QuantumCircuit, execute, transpile
+from qiskit.providers.aer import AerSimulator
+from qiskit.visualization import plot_histogram
 
-st.set_page_config(
-    page_title="QXplore: Quantum Key Distribution (BB84 Protocol) Virtual Lab",
-    layout="wide"
-)
+st.set_page_config(page_title="QXplore: Quantum Key Distribution (BB84 Protocol) Virtual Lab",
+                   layout="wide")
 
 st.title("QXplore: Quantum Key Distribution (BB84 Protocol) Virtual Lab")
 
-# Sidebar for experiment selection
-experiment = st.sidebar.selectbox(
-    "Select Experiment",
-    [
-        "Experiment 1: BB84 with/without Eve",
-        "Experiment 2: BB84 by varying qubits",
-        "Experiment 3: Impact of channel noise",
-        "Experiment 4: Impact of distance"
-    ]
-)
+# --------------------------- Helper functions ---------------------------
+def generate_bb84_bits(num_qubits):
+    alice_bits = np.random.randint(2, size=num_qubits)
+    alice_bases = np.random.randint(2, size=num_qubits)
+    bob_bases = np.random.randint(2, size=num_qubits)
+    return alice_bits, alice_bases, bob_bases
 
-# Utility functions
-def generate_bits(n):
-    return np.random.randint(0, 2, n)
-
-def generate_bases(n):
-    return np.random.randint(0, 2, n)
-
-def bb84_simulation(num_qubits=8, eve=False, noise=0.0):
-    alice_bits = generate_bits(num_qubits)
-    alice_bases = generate_bases(num_qubits)
-    bob_bases = generate_bases(num_qubits)
-    
-    eve_bases = generate_bases(num_qubits) if eve else None
-    eve_bits = alice_bits.copy() if eve else None
-
-    transmitted_bits = []
-    final_key_indices = []
+def simulate_bb84(alice_bits, alice_bases, bob_bases, eve=False, noise=0.0):
+    num_qubits = len(alice_bits)
+    key_bits = []
+    table = []
 
     for i in range(num_qubits):
+        bit = alice_bits[i]
+        basis = alice_bases[i]
+        bob_basis = bob_bases[i]
+
         # Eve interception
         if eve:
-            if eve_bases[i] != alice_bases[i]:
-                # Eve measures in wrong basis, collapses qubit
-                eve_bits[i] = np.random.randint(0, 2)
-
-        # Bob measurement
-        if eve:
-            if bob_bases[i] == (eve_bases[i] if eve else alice_bases[i]):
-                measured_bit = eve_bits[i]
-            else:
-                measured_bit = np.random.randint(0, 2)
+            eve_basis = np.random.randint(2)
+            if eve_basis != basis:
+                # Eve disturbs the photon
+                bit = np.random.randint(2)
         else:
-            if bob_bases[i] == alice_bases[i]:
-                measured_bit = alice_bits[i]
-            else:
-                measured_bit = np.random.randint(0, 2)
-        
-        # Apply channel noise
+            eve_basis = None
+
+        # Noise in channel
         if np.random.rand() < noise:
-            measured_bit = 1 - measured_bit
+            bit = 1 - bit  # flip
 
-        transmitted_bits.append(measured_bit)
+        basis_match = basis == bob_basis
+        status = "Kept" if basis_match else "Discarded"
+        if basis_match:
+            key_bits.append(bit)
 
-    # Determine kept bits
-    basis_match = [("Yes" if alice_bases[i]==bob_bases[i] else "No") for i in range(num_qubits)]
-    status = [("Kept" if bm=="Yes" else "Discarded") for bm in basis_match]
-    final_key_indices = [i for i,bm in enumerate(basis_match) if bm=="Yes"]
+        table.append([i+1, bit, basis, bob_basis, "Yes" if basis_match else "No",
+                      status, eve_basis])
 
-    alice_key = [alice_bits[i] for i in final_key_indices]
-    bob_key = [transmitted_bits[i] for i in final_key_indices]
+    key_bits = np.array(key_bits)
+    return table, key_bits
 
-    # QBER calculation
-    if len(alice_key) > 0:
-        qber = np.sum(np.array(alice_key) != np.array(bob_key)) / len(alice_key)
-    else:
-        qber = 0
+def compute_qber(alice_key, bob_key):
+    min_len = min(len(alice_key), len(bob_key))
+    if min_len == 0:
+        return 0
+    errors = np.sum(alice_key[:min_len] != bob_key[:min_len])
+    return errors / min_len
 
-    # Table
-    table_data = {
-        "Alice Bit": alice_bits,
-        "Alice Basis": alice_bases,
-        "Bob Basis": bob_bases,
-        "Basis Match": basis_match,
-        "Status": status,
-        "Bob Bit": transmitted_bits
-    }
-    if eve:
-        table_data["Eve Basis"] = eve_bases
-        table_data["Eve Bit"] = eve_bits
+# --------------------------- Sidebar: Experiment selection ---------------------------
+exp_choice = st.sidebar.selectbox("Select Experiment",
+                                  ["1. BB84 with/without Eve",
+                                   "2. Qubit variation impact",
+                                   "3. Channel noise impact",
+                                   "4. Distance impact"])
 
-    df = pd.DataFrame(table_data)
+st.sidebar.markdown("---")
 
-    return df, alice_key, bob_key, qber
+# --------------------------- Common Controls ---------------------------
+num_qubits = st.sidebar.slider("Number of Qubits", min_value=8, max_value=128, value=16, step=8)
+noise = st.sidebar.slider("Channel Noise (0.0 - 1.0)", min_value=0.0, max_value=0.2, value=0.0, step=0.01)
+eve_present = st.sidebar.checkbox("Include Eve in simulation", value=False)
+reset_btn = st.sidebar.button("Reset / Rerun Simulation")
 
-# ----------- EXPERIMENTS ----------------
-if experiment == "Experiment 1: BB84 with/without Eve":
-    st.header("Experiment 1: Study of BB84 protocol with Eve & Without Eve")
+# --------------------------- Experiment 1: BB84 with/without Eve ---------------------------
+if exp_choice.startswith("1"):
+    st.subheader("Experiment 1: BB84 Protocol with/without Eve")
     st.markdown("""
-    **Aim:** Observe the impact of the presence or absence of an eavesdropper (Eve) on key agreement and QBER in BB84 protocol.
+    **Aim**: Observe the impact of the presence or absence of an eavesdropper (Eve) on key generation and QBER.
+    **Procedure**: Select the number of qubits, enable/disable Eve, then run the simulation. The BB84 protocol table shows Alice & Bob bits, basis selection, basis match, and whether the bit is kept or discarded.
     """)
-    st.subheader("Procedure")
+    if reset_btn:
+        alice_bits, alice_bases, bob_bases = generate_bb84_bits(num_qubits)
+        table, alice_key = simulate_bb84(alice_bits, alice_bases, bob_bases, eve=eve_present, noise=noise)
+        df_table = pd.DataFrame(table, columns=["Qubit #", "Alice Bit", "Alice Basis",
+                                                "Bob Basis", "Basis Match", "Status", "Eve Basis"])
+        st.markdown("**BB84 Protocol Process**")
+        st.dataframe(df_table)
+
+        bob_key = alice_key.copy()  # Since no errors simulated apart from Eve/noise
+        qber = compute_qber(alice_key, bob_key)
+        st.write(f"**Alice Key:** {alice_key}")
+        st.write(f"**Bob Key:** {bob_key}")
+        st.write(f"**QBER:** {qber:.2f}")
+
+# --------------------------- Experiment 2: Qubit variation impact ---------------------------
+elif exp_choice.startswith("2"):
+    st.subheader("Experiment 2: Impact of Qubit Number on QBER")
     st.markdown("""
-    1. Select number of qubits (8–128, powers of 2).  
-    2. Run BB84 simulation **with** or **without** Eve.  
-    3. Observe the BB84 protocol process table.  
-    4. Check Alice & Bob key agreement and QBER.  
-    5. Compare QBER with and without Eve using the compare button.  
+    **Aim**: As the number of qubits changes, observe its impact on QBER.
+    **Procedure**: Select number of qubits, optionally include Eve, and run the simulation. Observe how key length and QBER vary.
     """)
-
-    # Controls
-    num_qubits = st.sidebar.select_slider("Number of Qubits", options=[8,16,32,64,128], value=16)
-    run_with_eve = st.sidebar.button("Run with Eve")
-    run_without_eve = st.sidebar.button("Run without Eve")
-    compare_qber = st.sidebar.button("Compare QBER")
-    reset_expt1 = st.sidebar.button("Reset")
-
-    if run_with_eve:
-        df, alice_key, bob_key, qber_eve = bb84_simulation(num_qubits, eve=True)
-        st.subheader("BB84 Protocol Process (With Eve)")
-        st.dataframe(df)
-        st.write(f"Final Alice Key (Kept Bits): {alice_key}")
-        st.write(f"Final Bob Key (Kept Bits): {bob_key}")
-        st.write(f"QBER: {qber_eve:.3f}")
-
-    if run_without_eve:
-        df, alice_key, bob_key, qber_no_eve = bb84_simulation(num_qubits, eve=False)
-        st.subheader("BB84 Protocol Process (Without Eve)")
-        st.dataframe(df)
-        st.write(f"Final Alice Key (Kept Bits): {alice_key}")
-        st.write(f"Final Bob Key (Kept Bits): {bob_key}")
-        st.write(f"QBER: {qber_no_eve:.3f}")
-
-    if compare_qber:
-        # Run both
-        _, _, _, qber_eve = bb84_simulation(num_qubits, eve=True)
-        _, _, _, qber_no_eve = bb84_simulation(num_qubits, eve=False)
-        st.subheader("QBER Comparison")
-        fig, ax = plt.subplots()
-        ax.bar(["With Eve","Without Eve"], [qber_eve,qber_no_eve], color=['red','green'])
-        ax.set_ylabel("QBER")
-        ax.set_title("QBER Comparison")
-        st.pyplot(fig)
-
-# --------------------------------------------------------
-if experiment == "Experiment 2: BB84 by varying qubits":
-    st.header("Experiment 2: Impact of Number of Qubits on QBER")
-    st.markdown("""
-    **Aim:** Observe how the number of qubits affects the Quantum Bit Error Rate (QBER) in BB84 protocol.
-    """)
-    st.subheader("Procedure")
-    st.markdown("""
-    1. Select number of qubits (8–128, powers of 2).  
-    2. Run BB84 simulation **with** or **without** Eve.  
-    3. Observe BB84 table for each qubit selection.  
-    4. Check final key and QBER.  
-    5. Plot number of qubits vs QBER.  
-    """)
-
-    num_qubits_list = [8,16,32,64,128]
-    with_eve = st.sidebar.checkbox("Run With Eve", value=False)
-    plot_qubits_vs_qber = st.sidebar.button("Plot Qubit vs QBER")
-    reset_expt2 = st.sidebar.button("Reset")
-
-    all_keys = []
+    qubit_list = list(range(8, 129, 8))
     qber_list = []
+    key_table = []
 
-    bb84_tables = []
+    for nq in qubit_list:
+        alice_bits, alice_bases, bob_bases = generate_bb84_bits(nq)
+        table, alice_key = simulate_bb84(alice_bits, alice_bases, bob_bases, eve=eve_present, noise=noise)
+        bob_key = alice_key.copy()
+        qber_val = compute_qber(alice_key, bob_key)
+        qber_list.append(qber_val)
+        key_table.append([nq, "".join(map(str, alice_key)), f"{qber_val:.2f}"])
 
-    for nq in num_qubits_list:
-        df, alice_key, bob_key, qber = bb84_simulation(nq, eve=with_eve)
-        df["Number of Qubits"] = nq
-        bb84_tables.append(df)
-        qber_list.append(qber)
-        all_keys.append(alice_key)
+    df_keys = pd.DataFrame(key_table, columns=["No. of Qubits", "Key Generated", "QBER"])
+    st.dataframe(df_keys)
 
-    # Combine tables
-    combined_df = pd.concat(bb84_tables, ignore_index=True)
-    st.subheader("BB84 Protocol Process for All Qubit Selections")
-    st.dataframe(combined_df)
+    fig, ax = plt.subplots()
+    ax.plot(df_keys["No. of Qubits"], df_keys["QBER"], marker="o", color="blue")
+    ax.set_xlabel("Number of Qubits")
+    ax.set_ylabel("QBER")
+    ax.set_title("Impact of Qubit Variation on QBER")
+    st.pyplot(fig)
 
-    qber_summary = pd.DataFrame({
-        "Number of Qubits": num_qubits_list,
-        "QBER": qber_list
-    })
-    st.subheader("Summary: Number of Qubits vs QBER")
-    st.dataframe(qber_summary)
-
-    if plot_qubits_vs_qber:
-        fig, ax = plt.subplots()
-        ax.plot(num_qubits_list, qber_list, marker='o', label=("With Eve" if with_eve else "Without Eve"))
-        ax.set_xlabel("Number of Qubits")
-        ax.set_ylabel("QBER")
-        ax.set_title("Number of Qubits vs QBER")
-        ax.legend()
-        st.pyplot(fig)
-
-# --------------------------------------------------------
-if experiment == "Experiment 3: Impact of channel noise":
-    st.header("Experiment 3: Impact of Channel Noise on QBER")
+# --------------------------- Experiment 3: Channel noise impact ---------------------------
+elif exp_choice.startswith("3"):
+    st.subheader("Experiment 3: Impact of Channel Noise on QBER")
     st.markdown("""
-    **Aim:** Observe how channel noise affects QBER in BB84 protocol.
-    Noise is represented as the probability (0–1) that a transmitted qubit flips randomly.
+    **Aim**: Observe the effect of channel noise on QBER. Noise represents the probability that a transmitted qubit flips during transmission (e.g., 0.01 = 1% chance of flipping).
+    **Procedure**: Select channel noise level, number of qubits, optionally include Eve, and run the simulation.
     """)
-    st.subheader("Procedure")
+    noise_values = np.arange(0.0, 0.21, 0.02)
+    qber_list = []
+    for n in noise_values:
+        alice_bits, alice_bases, bob_bases = generate_bb84_bits(num_qubits)
+        table, alice_key = simulate_bb84(alice_bits, alice_bases, bob_bases, eve=eve_present, noise=n)
+        bob_key = alice_key.copy()
+        qber_val = compute_qber(alice_key, bob_key)
+        qber_list.append(qber_val)
+
+    df_noise = pd.DataFrame(list(zip(noise_values, qber_list)), columns=["Channel Noise", "QBER"])
+    st.dataframe(df_noise)
+
+    fig, ax = plt.subplots()
+    ax.plot(df_noise["Channel Noise"], df_noise["QBER"], marker="o", color="red")
+    ax.set_xlabel("Channel Noise")
+    ax.set_ylabel("QBER")
+    ax.set_title("Impact of Channel Noise on QBER")
+    st.pyplot(fig)
+
+# --------------------------- Experiment 4: Distance impact (abstracted) ---------------------------
+elif exp_choice.startswith("4"):
+    st.subheader("Experiment 4: Impact of Distance on QBER")
     st.markdown("""
-    1. Select channel noise level (0–0.1).  
-    2. Run BB84 simulation with selected noise.  
-    3. Observe BB84 table and QBER.  
-    4. Plot channel noise vs QBER.  
+    **Aim**: Observe the effect of distance on QBER. Longer distance increases the probability of qubit loss or error.
+    **Procedure**: Select an abstract distance factor (simulated via noise), number of qubits, optionally include Eve, and run the simulation.
     """)
+    distance_values = np.arange(1, 11, 1)  # arbitrary distance units
+    qber_list = []
+    for d in distance_values:
+        alice_bits, alice_bases, bob_bases = generate_bb84_bits(num_qubits)
+        # assume distance introduces noise proportional to distance
+        table, alice_key = simulate_bb84(alice_bits, alice_bases, bob_bases, eve=eve_present, noise=0.01*d)
+        bob_key = alice_key.copy()
+        qber_val = compute_qber(alice_key, bob_key)
+        qber_list.append(qber_val)
 
-    noise_level = st.sidebar.slider("Channel Noise Probability", min_value=0.0, max_value=0.1, step=0.01, value=0.01)
-    run_noise = st.sidebar.button("Run Simulation")
-    plot_noise = st.sidebar.button("Plot Noise vs QBER")
+    df_distance = pd.DataFrame(list(zip(distance_values, qber_list)), columns=["Distance (units)", "QBER"])
+    st.dataframe(df_distance)
 
-    if run_noise:
-        df, alice_key, bob_key, qber = bb84_simulation(32, eve=False, noise=noise_level)
-        st.subheader(f"BB84 Protocol Process with Noise {noise_level}")
-        st.dataframe(df)
-        st.write(f"Alice Key: {alice_key}")
-        st.write(f"Bob Key: {bob_key}")
-        st.write(f"QBER: {qber:.3f}")
-
-    if plot_noise:
-        noise_vals = np.arange(0, 0.11, 0.01)
-        qber_vals = []
-        for n in noise_vals:
-            _, _, _, q = bb84_simulation(32, eve=False, noise=n)
-            qber_vals.append(q)
-        fig, ax = plt.subplots()
-        ax.plot(noise_vals, qber_vals, marker='o')
-        ax.set_xlabel("Channel Noise Probability")
-        ax.set_ylabel("QBER")
-        ax.set_title("Channel Noise vs QBER")
-        st.pyplot(fig)
-
-# --------------------------------------------------------
-if experiment == "Experiment 4: Impact of distance":
-    st.header("Experiment 4: Impact of Distance between Alice & Bob on QBER")
-    st.markdown("""
-    **Aim:** Observe how increasing distance (or simulating it as a proxy for decoherence/noise) affects QBER.
-    """)
-    st.subheader("Procedure")
-    st.markdown("""
-    1. Select a distance value (arbitrary units).  
-    2. Run BB84 simulation assuming higher distance increases error probability.  
-    3. Observe BB84 table and QBER.  
-    4. Plot distance vs QBER.  
-    """)
-
-    distance = st.sidebar.slider("Distance (arbitrary units)", min_value=1, max_value=20, step=1, value=5)
-    run_distance = st.sidebar.button("Run Simulation")
-    plot_distance = st.sidebar.button("Plot Distance vs QBER")
-
-    if run_distance:
-        # We simulate distance as noise factor proportional to distance
-        noise_factor = distance * 0.01
-        df, alice_key, bob_key, qber = bb84_simulation(32, eve=False, noise=noise_factor)
-        st.subheader(f"BB84 Protocol Process at Distance {distance}")
-        st.dataframe(df)
-        st.write(f"Alice Key: {alice_key}")
-        st.write(f"Bob Key: {bob_key}")
-        st.write(f"QBER: {qber:.3f}")
-
-    if plot_distance:
-        distances = np.arange(1,21)
-        qber_vals = []
-        for d in distances:
-            noise_factor = d*0.01
-            _, _, _, q = bb84_simulation(32, eve=False, noise=noise_factor)
-            qber_vals.append(q)
-        fig, ax = plt.subplots()
-        ax.plot(distances, qber_vals, marker='o')
-        ax.set_xlabel("Distance (arbitrary units)")
-        ax.set_ylabel("QBER")
-        ax.set_title("Distance vs QBER")
-        st.pyplot(fig)
-
-    
-
-   
+    fig, ax = plt.subplots()
+    ax.plot(df_distance["Distance (units)"], df_distance["QBER"], marker="o", color="green")
+    ax.set_xlabel("Distance")
+    ax.set_ylabel("QBER")
+    ax.set_title("Impact of Distance on QBER")
+    st.pyplot(fig)
