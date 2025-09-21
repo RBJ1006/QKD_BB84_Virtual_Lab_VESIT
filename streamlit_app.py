@@ -3,10 +3,10 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 from qiskit import QuantumCircuit
-from qiskit.providers.aer import AerSimulator  # AerSimulator is now in providers.aer
+#from qiskit.providers.aer import AerSimulator  # AerSimulator is now in providers.aer
 from qiskit.utils import QuantumInstance
-from qiskit.execute_function import execute  # execute is now imported from execute_function
-
+#from qiskit.execute_function import execute  # execute is now imported from execute_function
+from qiskit_aer import Aer
 
 # Set up Streamlit page
 st.set_page_config(page_title="QKD Virtual Lab - BB84 Protocol", layout="wide")
@@ -19,13 +19,13 @@ tab = st.sidebar.radio("Go to", ["Introduction", "Simulation"])
 if tab == "Introduction":
     st.title("Quantum Key Distribution: BB84 Protocol")
     st.markdown("""
-    **Why QKD?**  
-    Quantum Key Distribution allows two parties to share a secure key using quantum mechanics.  
+    **Why QKD?**
+    Quantum Key Distribution allows two parties to share a secure key using quantum mechanics.
 
-    **BB84 Protocol Overview:**  
-    - Sender (Alice) encodes bits using random bases (Z or X).  
-    - Receiver (Bob) measures in random bases.  
-    - They compare bases over a public channel to create a shared key.  
+    **BB84 Protocol Overview:**
+    - Sender (Alice) encodes bits using random bases (Z or X).
+    - Receiver (Bob) measures in random bases.
+    - They compare bases over a public channel to create a shared key.
     - Presence of eavesdropper (Eve) can be detected due to quantum disturbance.
     """)
 
@@ -48,7 +48,7 @@ if tab == "Simulation":
 
         for i in range(n_bits):
             qc = QuantumCircuit(1, 1)
-            
+
             # Alice encodes
             if alice_bits[i] == 1:
                 qc.x(0)
